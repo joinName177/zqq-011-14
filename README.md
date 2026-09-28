@@ -9,6 +9,14 @@
 - `src/adapters`：适配器层（LocalStorage 持久化与内置14天气象序列适配器、气象计算引擎适配器）。
 - `src/ui`：原生 CSS 视觉呈现层，包含综观天气图 SVG 动态矢量图、气压带进度表、季风走向雷达与灾害预警防灾指南。
 
+## 国际化（中 / English）
+
+- 领域层只保存**语言无关的稳定编码与数值**（标签 `MoodTagCode`、风向 `WindDirCode`、气压带 / 季风 / 天气系统 / 预警编码），所有界面文案集中在 `src/core/i18n.ts` 的 `zh` / `en` 两套词条中，由 `src/core/localize.ts` 投影为展示视图。
+- 数字统一经 `formatNumber` / `formatCompactInt` / `formatRange` 输出，日期统一经 `formatDate` / `formatShortDate`（`Intl.DateTimeFormat`）输出，日期存储与计算一律使用本地时区的 `YYYY-MM-DD`，避免 `toISOString()` 的 UTC 跨日偏差。
+- 词条缺失时按「目标语言 → 默认中文 → 编码本身」回退，界面不会出现空白；无预警时展示本地化的“空域晴朗”回退文案。
+- 语言通过右上角 🌐 按钮切换，选择持久化在 `mood_meteorology_locale_v1`；旧版本 localStorage 中的中文标签 / 风向名会在读取时自动迁移为稳定编码（`migrateRecord`）。
+
+
 ## 本地运行
 
 ```bash

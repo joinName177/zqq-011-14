@@ -1,20 +1,20 @@
-export type AlertLevel = '蓝色' | '黄色' | '橙色' | '红色';
+import type {
+  MoodTagCode,
+  WindDirCode,
+  ZoneCode,
+  MonsoonCode,
+  PressureSystemCode,
+  AlertLevelCode,
+  AlertCode
+} from './i18n';
 
-export interface MoodTagMeta {
-  tag: string;
-  category: 'sunny' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'fog';
-  defaultPressure: number; // 960 - 1040 hPa
-  defaultTemp: number;     // Celsius
-  defaultHumidity: number; // 0 - 100%
-  icon: string;
-  windDesc: string;
-  themeColor: string;
-}
+// 预警等级使用稳定编码（blue/yellow/orange/red），展示文案统一在 i18n 层解析。
+export type AlertLevel = AlertLevelCode;
 
 export interface MoodRecord {
   id: string;
-  date: string; // YYYY-MM-DD
-  tag: string;
+  date: string; // YYYY-MM-DD（本地时区，跨日口径统一 / local time zone）
+  tag: MoodTagCode;
   intensity: number; // 1 - 10
   note: string;
   pressureHpa: number;
@@ -22,48 +22,48 @@ export interface MoodRecord {
   humidityPercent: number;
   windSpeedKmH: number;
   windDirectionDeg: number;
-  windDirectionName: string;
+  windDirection: WindDirCode;
 }
 
+// 气压带仅保存编码、数值区间与统计比例，名称/描述在 i18n 层解析。
 export interface BarometricZone {
-  code: string;
-  name: string;
-  psychologicalState: string;
-  pressureRange: string;
+  code: ZoneCode;
+  pressureMin: number;
+  pressureMax: number;
+  cold?: boolean;
   activeRatio: number; // 0 - 100%
   status: 'dominant' | 'active' | 'receding';
-  description: string;
 }
 
 export interface MonsoonTrend {
-  vectorName: string;
-  originSource: string;
+  code: MonsoonCode;
   frequencyDays: number;
-  flowSpeed: string;
+  flowSpeedKmh: number;
   windAngle: number;
-  weatherImpact: string;
-  upcomingForecast: string;
 }
 
 export interface ExtremeWeatherAlert {
   id: string;
+  code: AlertCode;
   level: AlertLevel;
-  type: string;
-  title: string;
-  issuedTime: string;
-  triggerCause: string;
-  defenseProtocol: string[]; // 防灾自愈指南
+  issuedTime: string; // YYYY-MM-DD
+  // 触发预警时的遥测数值快照，供本地化文案插值（语言无关）。
+  // Telemetry snapshot used to interpolate localized copy.
+  params: {
+    pressure: number;
+    humidity: number;
+    temperature: number;
+  };
 }
 
 export interface SynopticChartData {
   chartId: string;
-  generatedDate: string;
+  generatedDate: string; // YYYY-MM-DD
   currentRecord: MoodRecord;
   records: MoodRecord[];
   averagePressure: number;
   zones: BarometricZone[];
   monsoon: MonsoonTrend;
   alerts: ExtremeWeatherAlert[];
-  pressureSystemType: '强烈冷涡旋' | '副热带高压晴空' | '锋面气旋多变' | '温带反气旋平稳' | '深槽低气压阴霾';
-  metSummary: string;
+  pressureSystemType: PressureSystemCode;
 }

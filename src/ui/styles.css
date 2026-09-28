@@ -89,6 +89,8 @@ body {
 .met-header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -444,16 +446,53 @@ body {
   border-left: 4px solid var(--met-red);
 }
 
-.alert-item.橙色 {
+.alert-item.red {
+  border-left-color: var(--met-red);
+}
+
+.alert-item.orange {
   border-left-color: var(--met-orange);
 }
 
-.alert-item.黄色 {
+.alert-item.yellow {
   border-left-color: var(--met-gold);
 }
 
-.alert-item.蓝色 {
+.alert-item.blue {
   border-left-color: var(--met-blue);
+}
+
+.alert-empty {
+  font-size: 13px;
+  color: var(--met-muted);
+  background: var(--met-card);
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.btn-lang {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: var(--met-cyan);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-lang:hover {
+  background: rgba(0, 240, 255, 0.16);
+  border-color: var(--met-cyan);
+}
+
+.modal-field-label {
+  font-size: 12px;
+  color: var(--met-muted);
+  display: block;
+  margin-bottom: 8px;
 }
 
 .alert-title-row {
