@@ -6,9 +6,11 @@ import {
   ExtremeWeatherAlert,
   SynopticChartData
 } from './models';
+import { toLocalISODate, parseISODate } from './time';
 
 export const TAG_METAS: Record<string, MoodTagMeta> = {
   '晴空万里': {
+    key: 'clearSky',
     tag: '晴空万里',
     category: 'sunny',
     defaultPressure: 1024,
@@ -19,6 +21,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#ffb703'
   },
   '微风煦暖': {
+    key: 'gentleBreeze',
     tag: '微风煦暖',
     category: 'sunny',
     defaultPressure: 1018,
@@ -29,6 +32,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#fb8500'
   },
   '阴转多云': {
+    key: 'cloudyTurning',
     tag: '阴转多云',
     category: 'cloudy',
     defaultPressure: 1008,
@@ -39,6 +43,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#8ecae6'
   },
   '低气压大雾': {
+    key: 'lowPressureFog',
     tag: '低气压大雾',
     category: 'fog',
     defaultPressure: 998,
@@ -49,6 +54,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#6c757d'
   },
   '局部有焦虑': {
+    key: 'localizedAnxiety',
     tag: '局部有焦虑',
     category: 'cloudy',
     defaultPressure: 992,
@@ -59,6 +65,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#588157'
   },
   '暖湿气流过境': {
+    key: 'warmHumidFront',
     tag: '暖湿气流过境',
     category: 'rain',
     defaultPressure: 1002,
@@ -69,6 +76,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#219ebc'
   },
   '突发雷暴': {
+    key: 'suddenThunderstorm',
     tag: '突发雷暴',
     category: 'storm',
     defaultPressure: 975,
@@ -79,6 +87,7 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
     themeColor: '#7209b7'
   },
   '寒潮大风': {
+    key: 'coldWaveGale',
     tag: '寒潮大风',
     category: 'snow',
     defaultPressure: 1032,
@@ -99,15 +108,18 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
   const humidityPercent = Math.min(100, Math.max(20, meta.defaultHumidity + (intensity > 6 ? 10 : -5)));
 
   const windDirections = ['东北', '东', '东南', '南', '西南', '西', '西北', '北'];
+  const windDirectionKeys = ['ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'n'] as const;
   const dirIdx = Math.abs((tag.charCodeAt(0) + intensity) % 8);
   const windDirName = windDirections[dirIdx];
+  const windDirKey = windDirectionKeys[dirIdx];
   const windDeg = dirIdx * 45;
   const windSpeed = 5 + intensity * 3.5;
 
   return {
     id: `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    date: dateStr || new Date().toISOString().split('T')[0],
+    date: dateStr || toLocalISODate(new Date()),
     tag,
+    tagKey: meta.key,
     intensity,
     note: note.trim() || '平静观测记录',
     pressureHpa,
@@ -115,12 +127,13 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
     humidityPercent,
     windSpeedKmH: Math.round(windSpeed),
     windDirectionDeg: windDeg,
+    windDirectionKey: windDirKey,
     windDirectionName: windDirName
   };
 }
 
 export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData {
-  const sorted = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sorted = [...records].sort((a, b) => (parseISODate(a.date)?.getTime() ?? 0) - (parseISODate(b.date)?.getTime() ?? 0));
   const currentRecord = sorted[sorted.length - 1] || createRecordFromTag('阴转多云', 5, '默认天气');
 
   const totalPressure = sorted.reduce((acc, r) => acc + r.pressureHpa, 0);
@@ -143,6 +156,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   const zones: BarometricZone[] = [
     {
       code: 'Z-STH',
+      zoneKey: 'subtropicalHigh',
       name: '副热带高压带（心境晴朗稳定）',
       psychologicalState: '精力平稳、秩序感充足、心态从容明朗',
       pressureRange: '1018 ~ 1030 hPa',
@@ -152,6 +166,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     },
     {
       code: 'Z-EQU',
+      zoneKey: 'equatorialTrough',
       name: '赤道低压槽（充沛对流与灵感）',
       psychologicalState: '情绪敏感、灵感涌动、轻微情绪躁动',
       pressureRange: '1000 ~ 1015 hPa',
@@ -161,6 +176,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     },
     {
       code: 'Z-SPL',
+      zoneKey: 'subpolarLow',
       name: '副极地低气压带（低落潮湿阻滞）',
       psychologicalState: '情绪内耗、局部焦虑、精力低谷期',
       pressureRange: '970 ~ 998 hPa',
@@ -170,6 +186,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     },
     {
       code: 'Z-POL',
+      zoneKey: 'polarHigh',
       name: '极地冷高压区（情感冷却与封闭）',
       psychologicalState: '冷漠理性、拒绝社交、自我防御开启',
       pressureRange: '1025 ~ 1045 hPa (低温)',
@@ -184,6 +201,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   const avgIntensity = recentSlice.reduce((s, r) => s + r.intensity, 0) / (recentSlice.length || 1);
   const hasStorm = recentSlice.some(r => r.pressureHpa < 985);
 
+  let monsoonKey: MonsoonTrend['monsoonKey'] = 'mildSouth';
   let vectorName = '东亚温和偏南季风';
   let originSource = '来自生活日常与适度社交温和气团';
   let flowSpeed = '微风 12 km/h';
@@ -192,6 +210,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   let upcomingForecast = '预计未来三天无明显冷空气入侵，维持多云转晴趋势。';
 
   if (avgPressure < 995 || hasStorm) {
+    monsoonKey = 'tropicalCyclone';
     vectorName = '西南热带气旋逆时针切变流';
     originSource = '来自多重待办任务与社交过载的深层热低压';
     flowSpeed = '疾风 48 km/h';
@@ -199,6 +218,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     weatherImpact = '带来间歇性焦虑降水与情绪飑线，心理湿度高居不下';
     upcomingForecast = '警惕情绪二次对流反弹，建议尽早启动防灾避雨防御。';
   } else if (avgPressure > 1020) {
+    monsoonKey = 'highPressureWesterly';
     vectorName = '高压脊平直西风气流';
     originSource = '来自坚实生活秩序与专注工作带来的稳定反气旋';
     flowSpeed = '清风 18 km/h';
@@ -208,6 +228,7 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   }
 
   const monsoon: MonsoonTrend = {
+    monsoonKey,
     vectorName,
     originSource,
     frequencyDays: recentSlice.length,
@@ -224,11 +245,13 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   if (lastRecord.pressureHpa < 980 || (lastRecord.tag === '突发雷暴' && lastRecord.intensity >= 8)) {
     alerts.push({
       id: 'alert-red-storm',
+      alertKey: 'redStorm',
       level: '红色',
       type: '情绪特大暴雨与雷电暴风预警',
       title: '红色暴雨预警 · 情绪超负荷对流',
       issuedTime: lastRecord.date,
-      triggerCause: `中心气压降至 ${lastRecord.pressureHpa}hPa，阵风超速，局部心理降水量达特大暴雨级别。`,
+      triggerCause: `中心气压降至 ${lastRecord.pressureHpa} hPa，阵风超速，局部心理降水量达特大暴雨级别。`,
+      metrics: { pressureHpa: lastRecord.pressureHpa },
       defenseProtocol: [
         '立即暂停所有高摩擦高风险的人际沟通与决策。',
         '退回物理安全区（卧室/安静角落），拉上窗帘切断过多声光刺激。',
@@ -239,11 +262,13 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   } else if (lastRecord.tag === '局部有焦虑' && lastRecord.intensity >= 7) {
     alerts.push({
       id: 'alert-orange-anxiety',
+      alertKey: 'orangeAnxiety',
       level: '橙色',
       type: '干热高温与强对流焦虑预警',
       title: '橙色预警 · 局部焦虑气团盘旋',
       issuedTime: lastRecord.date,
       triggerCause: `心理湿度高达 ${lastRecord.humidityPercent}%，内热积蓄，出现明显心率过载与思绪乱流。`,
+      metrics: { humidityPercent: lastRecord.humidityPercent },
       defenseProtocol: [
         '执行“注意力物理降温”：离开发生焦虑的工位，步行洗脸或冷水洗手。',
         '将脑中盘旋的所有待办事项写在纸上，关停后台大脑线程。',
@@ -253,11 +278,13 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   } else if (lastRecord.tag === '寒潮大风') {
     alerts.push({
       id: 'alert-yellow-cold',
+      alertKey: 'yellowCold',
       level: '黄色',
       type: '情感寒潮与社交冰封预警',
       title: '黄色预警 · 极地干冷冷锋压境',
       issuedTime: lastRecord.date,
-      triggerCause: `气温剧烈骤降至 ${lastRecord.temperatureC}°C，情绪能量趋近冰点，防御性坚冰形成。`,
+      triggerCause: `气温剧烈骤降至 ${lastRecord.temperatureC} °C，情绪能量趋近冰点，防御性坚冰形成。`,
+      metrics: { temperatureC: lastRecord.temperatureC },
       defenseProtocol: [
         '不必强迫自己热情回应外界信息，开启社交请假条/免打扰模式。',
         '通过热汤、暖水袋、厚毯子提供基础躯体热量。',
@@ -268,20 +295,31 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
 
   // Determine system type
   let pressureSystemType: SynopticChartData['pressureSystemType'] = '温带反气旋平稳';
-  if (avgPressure >= 1020) pressureSystemType = '副热带高压晴空';
-  else if (avgPressure < 990) pressureSystemType = '强烈冷涡旋';
-  else if (alerts.length > 0) pressureSystemType = '锋面气旋多变';
-  else pressureSystemType = '深槽低气压阴霾';
+  let pressureSystemKey: SynopticChartData['pressureSystemKey'] = 'temperateAnticyclone';
+  if (avgPressure >= 1020) {
+    pressureSystemType = '副热带高压晴空';
+    pressureSystemKey = 'subtropicalClear';
+  } else if (avgPressure < 990) {
+    pressureSystemType = '强烈冷涡旋';
+    pressureSystemKey = 'coldVortex';
+  } else if (alerts.length > 0) {
+    pressureSystemType = '锋面气旋多变';
+    pressureSystemKey = 'frontalCyclone';
+  } else {
+    pressureSystemType = '深槽低气压阴霾';
+    pressureSystemKey = 'deepTrough';
+  }
 
   return {
     chartId: `SYN-${Date.now().toString(36).toUpperCase()}`,
-    generatedDate: new Date().toLocaleDateString('zh-CN'),
+    generatedDate: toLocalISODate(new Date()),
     currentRecord,
     records: sorted,
     averagePressure: avgPressure,
     zones,
     monsoon,
     alerts,
+    pressureSystemKey,
     pressureSystemType,
     metSummary: `气象综观显示：当前心境领空受【${pressureSystemType}】统御。全周期平均气压 ${avgPressure} hPa，近期主要受【${monsoon.vectorName}】影响。${alerts.length > 0 ? `当前挂起 ${alerts.length} 个灾害性气象预警！` : '整层大气环流平稳，无破坏性对流。'}`
   };

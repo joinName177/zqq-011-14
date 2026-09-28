@@ -1,8 +1,29 @@
 import { MoodRecord } from '../core/models';
 import { MoodRepositoryPort } from '../ports/mood-repository.port';
-import { createRecordFromTag } from '../core/meteorology-engine';
+import { createRecordFromTag, TAG_METAS } from '../core/meteorology-engine';
+import { toLocalISODate } from '../core/time';
+import { WIND_KEYS, WIND_KEY_BY_LABEL } from '../core/i18n';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
+const FALLBACK_TAG = '阴转多云';
+
+/** Normalize legacy/foreign records so tags and wind keys always resolve. */
+function normalizeRecord(raw: MoodRecord): MoodRecord {
+  const known = TAG_METAS[raw.tag];
+  const tag = known ? raw.tag : FALLBACK_TAG;
+  const meta = TAG_METAS[tag];
+  const byKey = WIND_KEYS.includes(raw.windDirectionKey as never) ? raw.windDirectionKey : undefined;
+  const windKey = byKey || WIND_KEY_BY_LABEL[raw.windDirectionName] || 'ne';
+  const windNames: Record<string, string> = { ne: '东北', e: '东', se: '东南', s: '南', sw: '西南', w: '西', nw: '西北', n: '北' };
+  const windName = WIND_KEY_BY_LABEL[raw.windDirectionName] ? raw.windDirectionName : windNames[windKey];
+  return {
+    ...raw,
+    tag,
+    tagKey: raw.tagKey ?? meta.key,
+    windDirectionKey: windKey,
+    windDirectionName: windName
+  };
+}
 
 export class LocalStorageMoodAdapter implements MoodRepositoryPort {
   getAll(): MoodRecord[] {
@@ -13,10 +34,10 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map(normalizeRecord);
       }
     } catch {
-      // ignore
+      // ignore corrupted storage — fall back to the sample sequence
     }
     return this.resetToSample();
   }
@@ -52,10 +73,10 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
       { tag: '局部有焦虑', intensity: 7, note: '新的一周即将到来，局部依然盘旋着对未知的轻度担忧', daysAgo: 0 }
     ];
 
-    const now = new Date();
     const records: MoodRecord[] = sampleSequence.map(item => {
-      const d = new Date(now.getTime() - item.daysAgo * 86400000);
-      const dateStr = d.toISOString().split('T')[0];
+      const d = new Date();
+      d.setDate(d.getDate() - item.daysAgo);
+      const dateStr = toLocalISODate(d);
       return createRecordFromTag(item.tag, item.intensity, item.note, dateStr);
     });
 

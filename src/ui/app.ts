@@ -1,12 +1,24 @@
 import { SynopticChartData, MoodRecord } from '../core/models';
 import { TAG_METAS } from '../core/meteorology-engine';
+import {
+  I18n,
+  localizedZone,
+  localizedMonsoon,
+  localizedAlert,
+  tagLabelByKey,
+  ALERT_LEVEL_KEY_BY_LABEL,
+  type AlertLevelKey
+} from '../core/i18n';
 
 export interface WeatherUIHandlers {
   onOpenLogModal: () => void;
   onResetData: () => void;
   onSubmitLog: (tag: string, intensity: number, note: string) => void;
   onSelectRecord: (record: MoodRecord) => void;
+  onToggleLocale: () => void;
 }
+
+const FALLBACK_TAG = '阴转多云';
 
 export function renderWeatherApp(
   container: HTMLElement,
@@ -19,13 +31,23 @@ export function renderWeatherApp(
   onCloseModal: () => void,
   onTagChange: (tag: string) => void,
   onIntensityChange: (val: number) => void,
-  onNoteChange: (val: string) => void
+  onNoteChange: (val: string) => void,
+  i18n: I18n
 ) {
   const cur = chartData.currentRecord;
-  const meta = TAG_METAS[cur.tag] || TAG_METAS['阴转多云'];
+  const meta = TAG_METAS[cur.tag] || TAG_METAS[FALLBACK_TAG];
+  const isZh = i18n.locale === 'zh';
+  const num = i18n.formatNumber.bind(i18n);
 
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+
+  /** Bilingual label: Chinese UI keeps the English gloss from the original design. */
+  const bi = (key: string, enKey: string) =>
+    isZh ? `${i18n.t(key)} (${i18n.t(enKey)})` : i18n.t(enKey);
+
+  const levelClass = (level: string): AlertLevelKey =>
+    ALERT_LEVEL_KEY_BY_LABEL[level as keyof typeof ALERT_LEVEL_KEY_BY_LABEL] ?? 'red';
 
   // Generate Isobar SVG paths dynamically based on records
   const isobarsSvg = `
@@ -103,37 +125,55 @@ export function renderWeatherApp(
         <circle cx="0" cy="0" r="14" fill="#070d18" stroke="#00f0ff" stroke-width="2" />
         <text x="0" y="5" font-size="12" text-anchor="middle">${meta.icon}</text>
         <rect x="-65" y="22" width="130" height="24" rx="4" fill="rgba(14,23,38,0.85)" stroke="rgba(0,240,255,0.3)" />
-        <text x="0" y="38" fill="#e2eafc" font-size="11" font-weight="bold" text-anchor="middle">气压观测点: ${cur.pressureHpa} hPa</text>
+        <text x="0" y="38" fill="#e2eafc" font-size="11" font-weight="bold" text-anchor="middle">${esc(i18n.t('stationPoint', { value: num(cur.pressureHpa) }))}</text>
       </g>
     </svg>
   `;
 
+  const topAlert = chartData.alerts[0];
+  const topAlertView = topAlert
+    ? localizedAlert(i18n, topAlert.alertKey, {
+        pressure: num(topAlert.metrics?.pressureHpa),
+        temperature: num(topAlert.metrics?.temperatureC),
+        humidity: num(topAlert.metrics?.humidityPercent)
+      })
+    : null;
+
+  const monsoonView = localizedMonsoon(i18n, chartData.monsoon.monsoonKey);
+  const monsoon = {
+    vectorName: monsoonView.vectorName || chartData.monsoon.vectorName,
+    originSource: monsoonView.originSource || chartData.monsoon.originSource,
+    flowSpeed: monsoonView.flowSpeed || chartData.monsoon.flowSpeed,
+    upcomingForecast: monsoonView.upcomingForecast || chartData.monsoon.upcomingForecast
+  };
+
   container.innerHTML = `
-    <div class="met-app">
+    <div class="met-app" lang="${i18n.locale === 'zh' ? 'zh-CN' : 'en'}">
       <header class="met-header">
         <div class="met-brand">
           <div class="radar-icon">📡</div>
           <div>
-            <h1>情绪天气台 · 心灵气象图系统</h1>
+            <h1>${esc(i18n.t('title'))}</h1>
             <p>PSYCHOLOGICAL METEOROLOGICAL OBSERVATORY &amp; SYNOPTIC CHART</p>
           </div>
         </div>
         <div class="met-header-actions">
-          <button class="btn-reset" id="btnReset">🔄 重置示例气象序列</button>
-          <button class="btn-record-mood" id="btnOpenLog">✍️ 记录今日心情天气</button>
+          <button class="btn-reset" id="btnToggleLocale" title="${esc(i18n.t('langToggleTitle'))}">🌐 ${esc(i18n.t('langToggle'))}</button>
+          <button class="btn-reset" id="btnReset">${esc(i18n.t('btnReset'))}</button>
+          <button class="btn-record-mood" id="btnOpenLog">${esc(i18n.t('btnRecord'))}</button>
         </div>
       </header>
 
       ${
-        chartData.alerts.length > 0
+        topAlert && topAlertView
           ? `
         <div class="alert-banner">
           <div class="alert-banner-left">
-            <span class="alert-tag">${chartData.alerts[0].level}预警</span>
-            <strong>${esc(chartData.alerts[0].title)}</strong>
-            <span style="font-size:13px;color:var(--met-text);">${esc(chartData.alerts[0].triggerCause)}</span>
+            <span class="alert-tag">${esc(i18n.alertLevel(topAlert.level))}${esc(i18n.t('alertSuffix'))}</span>
+            <strong>${esc(topAlertView.title || topAlert.title)}</strong>
+            <span style="font-size:13px;color:var(--met-text);">${esc(topAlertView.triggerCause || topAlert.triggerCause)}</span>
           </div>
-          <span style="font-size:12px;color:var(--met-muted);">${chartData.alerts[0].issuedTime} 发布</span>
+          <span style="font-size:12px;color:var(--met-muted);">${esc(i18n.t('alertIssuedAt', { date: i18n.formatDate(topAlert.issuedTime) }))}</span>
         </div>
       `
           : ''
@@ -143,33 +183,33 @@ export function renderWeatherApp(
         <!-- Left: Synoptic Chart & Telemetry -->
         <main class="synoptic-box">
           <div class="box-title">
-            <h2>🌐 个人专属情绪综观天气图 (Synoptic Chart)</h2>
+            <h2>${esc(i18n.t('chartTitle'))}${isZh ? ` (${esc(i18n.t('chartTitleEn'))})` : ''}</h2>
             <span style="font-size:12px;color:var(--met-muted);font-family:monospace;">
-              ${chartData.chartId} · ${chartData.generatedDate}
+              ${chartData.chartId} · ${esc(i18n.formatDate(chartData.generatedDate))}
             </span>
           </div>
 
           <!-- Current Telemetry -->
           <div class="current-telemetry">
             <div class="telemetry-card">
-              <div class="lbl">心境气压 (Barometer)</div>
-              <div class="val" style="color:var(--met-cyan);">${cur.pressureHpa} <span style="font-size:12px;">hPa</span></div>
-              <div class="lbl">${cur.pressureHpa < 1000 ? '低压对流' : '高压反气旋'}</div>
+              <div class="lbl">${esc(bi('telemetryPressure', 'telemetryPressureEn'))}</div>
+              <div class="val" style="color:var(--met-cyan);">${num(cur.pressureHpa)} <span style="font-size:12px;">hPa</span></div>
+              <div class="lbl">${esc(cur.pressureHpa < 1000 ? i18n.t('pressureLow') : i18n.t('pressureHigh'))}</div>
             </div>
             <div class="telemetry-card">
-              <div class="lbl">情绪温度 (Temperature)</div>
-              <div class="val" style="color:var(--met-gold);">${cur.temperatureC} <span style="font-size:12px;">°C</span></div>
-              <div class="lbl">体感适宜度良好</div>
+              <div class="lbl">${esc(bi('telemetryTemp', 'telemetryTempEn'))}</div>
+              <div class="val" style="color:var(--met-gold);">${num(cur.temperatureC)} <span style="font-size:12px;">°C</span></div>
+              <div class="lbl">${esc(i18n.t('tempComfort'))}</div>
             </div>
             <div class="telemetry-card">
-              <div class="lbl">心理湿度 (Humidity)</div>
-              <div class="val" style="color:var(--met-blue);">${cur.humidityPercent}%</div>
-              <div class="lbl">${cur.humidityPercent > 80 ? '湿润多云' : '清爽干燥'}</div>
+              <div class="lbl">${esc(bi('telemetryHumidity', 'telemetryHumidityEn'))}</div>
+              <div class="val" style="color:var(--met-blue);">${num(cur.humidityPercent)}%</div>
+              <div class="lbl">${esc(cur.humidityPercent > 80 ? i18n.t('humidityWet') : i18n.t('humidityDry'))}</div>
             </div>
             <div class="telemetry-card">
-              <div class="lbl">思绪风场 (Wind Field)</div>
-              <div class="val" style="color:#fff;">${cur.windDirectionName}风</div>
-              <div class="lbl">${cur.windSpeedKmH} km/h</div>
+              <div class="lbl">${esc(bi('telemetryWind', 'telemetryWindEn'))}</div>
+              <div class="val" style="color:#fff;">${esc(i18n.t('windDirection', { dir: i18n.windName(cur.windDirectionKey || cur.windDirectionName) }))}</div>
+              <div class="lbl">${esc(i18n.t('unitKmh', { value: num(cur.windSpeedKmH) }))}</div>
             </div>
           </div>
 
@@ -179,24 +219,24 @@ export function renderWeatherApp(
           </div>
 
           <div class="map-legend">
-            <div class="legend-item"><div class="legend-color" style="background:#ff0054;"></div><span>低压中心 (L) / 气旋雨带</span></div>
-            <div class="legend-item"><div class="legend-color" style="background:#3a86ff;"></div><span>高压中心 (H) / 晴朗平稳</span></div>
-            <div class="legend-item"><div class="legend-color" style="background:#00f0ff;"></div><span>等压线 (Isobars)</span></div>
-            <div class="legend-item"><div class="legend-color" style="background:#ffbe0b;"></div><span>风向矢量箭头</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#ff0054;"></div><span>${esc(i18n.t('legendLow'))}</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#3a86ff;"></div><span>${esc(i18n.t('legendHigh'))}</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#00f0ff;"></div><span>${esc(i18n.t('legendIsobars'))}</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#ffbe0b;"></div><span>${esc(i18n.t('legendWind'))}</span></div>
           </div>
 
           <!-- Recent Days Sequence Strip -->
           <div class="timeline-section">
-            <h3>📅 近期气象观测序列 (点击切换观测标本)</h3>
+            <h3>${esc(i18n.t('timelineTitle'))}</h3>
             <div class="records-strip">
               ${chartData.records
                 .map(
                   r => `
                 <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${r.id}">
-                  <div class="pill-date">${r.date.slice(5)}</div>
-                  <div class="pill-icon">${(TAG_METAS[r.tag] || TAG_METAS['阴转多云']).icon}</div>
-                  <div class="pill-tag">${esc(r.tag)}</div>
-                  <div class="pill-pressure">${r.pressureHpa} hPa</div>
+                  <div class="pill-date">${esc(i18n.formatDate(r.date, 'short'))}</div>
+                  <div class="pill-icon">${(TAG_METAS[r.tag] || TAG_METAS[FALLBACK_TAG]).icon}</div>
+                  <div class="pill-tag">${esc(i18n.tagLabel(r.tag))}</div>
+                  <div class="pill-pressure">${num(r.pressureHpa)} hPa</div>
                 </div>
               `
                 )
@@ -209,72 +249,83 @@ export function renderWeatherApp(
         <aside class="right-column">
           <!-- Barometric Zones -->
           <section class="side-panel">
-            <h3>🧭 情绪气压带分布</h3>
+            <h3>${esc(i18n.t('zonesTitle'))}</h3>
             <div class="zone-list">
               ${chartData.zones
-                .map(
-                  z => `
+                .map(z => {
+                  const view = localizedZone(i18n, z.zoneKey);
+                  const name = view.name || z.name;
+                  const state = view.state || z.psychologicalState;
+                  return `
                 <div class="zone-card">
                   <div class="zone-header">
-                    <span class="zone-name">${esc(z.name)}</span>
-                    <span class="zone-ratio">${z.activeRatio}% 频次</span>
+                    <span class="zone-name">${esc(name)}</span>
+                    <span class="zone-ratio">${esc(i18n.t('zoneFrequency', { value: num(z.activeRatio) }))}</span>
                   </div>
                   <div class="zone-progress-bg">
                     <div class="zone-progress-fill" style="width: ${z.activeRatio}%"></div>
                   </div>
-                  <div class="zone-desc">${esc(z.psychologicalState)}</div>
+                  <div class="zone-desc">${esc(state)}</div>
                 </div>
-              `
-                )
+              `;
+                })
                 .join('')}
             </div>
           </section>
 
           <!-- Monsoon Trends -->
           <section class="side-panel">
-            <h3>🌬️ 季风走势与大气环流</h3>
+            <h3>${esc(i18n.t('monsoonTitle'))}</h3>
             <div class="monsoon-card">
               <div class="monsoon-vector-title">
                 <span>🍃</span>
-                <span>${esc(chartData.monsoon.vectorName)}</span>
+                <span>${esc(monsoon.vectorName)}</span>
               </div>
               <div class="monsoon-meta">
-                <div>流场源动力：${esc(chartData.monsoon.originSource)}</div>
-                <div>流动强度：${chartData.monsoon.flowSpeed}</div>
+                <div>${esc(i18n.t('monsoonOrigin', { value: monsoon.originSource }))}</div>
+                <div>${esc(i18n.t('monsoonSpeed', { value: monsoon.flowSpeed }))}</div>
               </div>
               <div class="monsoon-forecast-box">
-                <strong>未来三日气象推演：</strong>
-                <div>${esc(chartData.monsoon.upcomingForecast)}</div>
+                <strong>${esc(i18n.t('monsoonForecastTitle'))}</strong>
+                <div>${esc(monsoon.upcomingForecast)}</div>
               </div>
             </div>
           </section>
 
           <!-- Extreme Weather Alerts -->
           <section class="side-panel">
-            <h3>⚠️ 极端天气预警与自愈指南</h3>
+            <h3>${esc(i18n.t('alertsTitle'))}</h3>
             <div class="alerts-list">
               ${
                 chartData.alerts.length > 0
                   ? chartData.alerts
-                      .map(
-                        a => `
-                    <div class="alert-item ${a.level}">
+                      .map(a => {
+                        const view = localizedAlert(i18n, a.alertKey, {
+                          pressure: num(a.metrics?.pressureHpa),
+                          temperature: num(a.metrics?.temperatureC),
+                          humidity: num(a.metrics?.humidityPercent)
+                        });
+                        const title = view.title || a.title;
+                        const cause = view.triggerCause || a.triggerCause;
+                        const steps = view.defenseProtocol.length > 0 ? view.defenseProtocol : a.defenseProtocol;
+                        return `
+                    <div class="alert-item ${levelClass(a.level)}">
                       <div class="alert-title-row">
-                        <span class="alert-name">${esc(a.title)}</span>
-                        <span class="alert-level-badge" style="background:rgba(255,255,255,0.1);color:#fff;">${a.level}</span>
+                        <span class="alert-name">${esc(title)}</span>
+                        <span class="alert-level-badge alert-level-${levelClass(a.level)}">${esc(i18n.alertLevel(a.level))}</span>
                       </div>
-                      <div class="alert-cause">${esc(a.triggerCause)}</div>
-                      <div class="defense-guide-title">🛡️ 防灾避险自愈协议：</div>
+                      <div class="alert-cause">${esc(cause)}</div>
+                      <div class="defense-guide-title">${esc(i18n.t('defenseTitle'))}</div>
                       <ul class="defense-list">
-                        ${a.defenseProtocol.map(p => `<li>${esc(p)}</li>`).join('')}
+                        ${steps.map(p => `<li>${esc(p)}</li>`).join('')}
                       </ul>
                     </div>
-                  `
-                      )
+                  `;
+                      })
                       .join('')
                   : `
                     <div style="font-size:13px;color:var(--met-muted);background:var(--met-card);padding:14px;border-radius:8px;">
-                      ✅ 当前心境空域晴朗，无活动极端灾害天气警报。
+                      ${esc(i18n.t('alertsEmpty'))}
                     </div>
                   `
               }
@@ -289,16 +340,16 @@ export function renderWeatherApp(
           ? `
         <div class="modal-backdrop" id="modalBackdrop">
           <div class="modal-dialog">
-            <h3>✍️ 今日心情气象签到</h3>
-            
-            <label style="font-size:12px;color:var(--met-muted);display:block;margin-bottom:8px;">选择今日核心气象标签：</label>
+            <h3>${esc(i18n.t('modalTitle'))}</h3>
+
+            <label style="font-size:12px;color:var(--met-muted);display:block;margin-bottom:8px;">${esc(i18n.t('modalChooseTag'))}</label>
             <div class="tag-selector-grid">
               ${Object.values(TAG_METAS)
                 .map(
                   m => `
-                <button type="button" class="tag-btn ${m.tag === selectedTag ? 'active' : ''}" data-tag="${m.tag}">
+                <button type="button" class="tag-btn ${m.tag === selectedTag ? 'active' : ''}" data-tag-key="${m.key}">
                   <span style="font-size:16px;">${m.icon}</span>
-                  <span>${m.tag}</span>
+                  <span>${esc(i18n.tagLabel(m.tag))}</span>
                 </button>
               `
                 )
@@ -306,18 +357,18 @@ export function renderWeatherApp(
             </div>
 
             <div class="form-group">
-              <label>气象对流强度 (1 - 10 级)：<span id="intensityVal" style="color:var(--met-cyan);font-weight:bold;">${selectedIntensity}</span></label>
+              <label>${esc(i18n.t('modalIntensity'))} <span id="intensityVal" style="color:var(--met-cyan);font-weight:bold;">${selectedIntensity}</span></label>
               <input type="range" class="form-range" id="intensityInput" min="1" max="10" value="${selectedIntensity}" />
             </div>
 
             <div class="form-group">
-              <label>观测记录与心绪注记：</label>
-              <textarea class="form-textarea" id="noteInput" placeholder="写下引起今天气压变化的事情或思绪...">${esc(noteText)}</textarea>
+              <label>${esc(i18n.t('modalNote'))}</label>
+              <textarea class="form-textarea" id="noteInput" placeholder="${esc(i18n.t('modalNotePlaceholder'))}">${esc(noteText)}</textarea>
             </div>
 
             <div class="modal-footer">
-              <button type="button" class="btn-reset" id="btnCancelModal">取消</button>
-              <button type="button" class="btn-record-mood" id="btnSubmitModal">保存并更新气象图</button>
+              <button type="button" class="btn-reset" id="btnCancelModal">${esc(i18n.t('modalCancel'))}</button>
+              <button type="button" class="btn-record-mood" id="btnSubmitModal">${esc(i18n.t('modalSubmit'))}</button>
             </div>
           </div>
         </div>
@@ -330,6 +381,7 @@ export function renderWeatherApp(
   // Attach event listeners
   container.querySelector('#btnOpenLog')?.addEventListener('click', handlers.onOpenLogModal);
   container.querySelector('#btnReset')?.addEventListener('click', handlers.onResetData);
+  container.querySelector('#btnToggleLocale')?.addEventListener('click', handlers.onToggleLocale);
 
   container.querySelectorAll('.record-pill').forEach(pill => {
     pill.addEventListener('click', () => {
@@ -342,8 +394,9 @@ export function renderWeatherApp(
   if (isModalOpen) {
     container.querySelectorAll('.tag-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const tag = btn.getAttribute('data-tag');
-        if (tag) onTagChange(tag);
+        const tagKey = btn.getAttribute('data-tag-key');
+        const label = tagLabelByKey(tagKey);
+        if (label) onTagChange(label);
       });
     });
 
